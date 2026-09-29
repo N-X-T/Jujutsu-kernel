@@ -1,4 +1,4 @@
-name: Build Jujutsu Kernel with KernelSU-Next
+name: Build Jujutsu Kernel with ReSukiSU and SUSFS
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  KERNEL_DEFCONFIG: "blossom_noksu_defconfig"
+  KERNEL_DEFCONFIG: "blossom_defconfig"
   KERNEL_ARCH: "arm64"
   KBUILD_BUILD_USER: "github-actions"
   KBUILD_BUILD_HOST: "ci-server"
@@ -52,9 +52,11 @@ jobs:
           /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
           /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
 
-      - name: Integrate KernelSU-Next
+      - name: Integrate ReSukiSU
         run: |
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          chmod +x clean.sh
+          ./clean.sh || true
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
           
       - name: Build kernel
         run: |
@@ -68,7 +70,7 @@ jobs:
 
           make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
 
-          echo "Building Jujutsu Kernel with KernelSU-Next..."
+          echo "Building Jujutsu Kernel with ReSukiSU and SUSFS..."
           make -j$(nproc) \
             O=out \
             ARCH=${ARCH} \
@@ -131,7 +133,7 @@ jobs:
       - name: Upload AnyKernel package
         uses: actions/upload-artifact@v7
         with:
-          name: Jujutsu-Kernel-KSU
+          name: Jujutsu-Kernel-ReSukiSU-SUSFS
           path: Jujutsu-Kernel-${{ github.sha }}.zip
           archive: false
           retention-days: 30
