@@ -83,7 +83,5 @@ On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refco
     - `susfs_is_inode_sus_kstat(inode, out_is_fuse)`: Backed by `SUS_KSTAT_HLIST`. Self-heals inode flag, protecting `generic_fillattr()`, `vfs_statfs()`, and `show_map_vma()`.
   - **`sus_map`**:
     - `susfs_is_inode_sus_map_fast(inode)`: Backed by `SUS_MAP_HLIST`. Self-heals `AS_FLAGS_SUS_MAP` protecting `/proc/<pid>/maps` and `/proc/<pid>/smaps` filtering.
-- **Unified `sus_path` Persistence**:
-  - `susfs_add_sus_path()` automatically enrolls added paths into `LH_SUS_PATH_LOOP` (if not already present), guaranteeing persistence across cold app launches regardless of whether `add_sus_path` or `add_sus_path_loop` was called by userspace.
 
 

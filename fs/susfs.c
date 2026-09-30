@@ -155,33 +155,6 @@ void susfs_add_sus_path(void __user **user_info) {
 		info.err = 0;
 	}
 
-	if (!info.err) {
-		struct st_susfs_sus_path_list *cursor = NULL;
-		struct st_susfs_sus_path_list *new_list = NULL;
-		bool found = false;
-
-		spin_lock(&susfs_spin_lock_sus_path);
-		list_for_each_entry(cursor, &LH_SUS_PATH_LOOP, list) {
-			if (!strcmp(cursor->target_pathname, info.target_pathname)) {
-				found = true;
-				break;
-			}
-		}
-		spin_unlock(&susfs_spin_lock_sus_path);
-
-		if (!found) {
-			new_list = kzalloc(sizeof(struct st_susfs_sus_path_list), GFP_KERNEL);
-			if (new_list) {
-				strncpy(new_list->info.target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
-				strncpy(new_list->target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
-				INIT_LIST_HEAD(&new_list->list);
-				spin_lock(&susfs_spin_lock_sus_path);
-				list_add_tail_rcu(&new_list->list, &LH_SUS_PATH_LOOP);
-				spin_unlock(&susfs_spin_lock_sus_path);
-				SUSFS_LOGI("target_pathname: '%s', is auto-added to LH_SUS_PATH_LOOP\n", new_list->target_pathname);
-			}
-		}
-	}
 out_path_put_path:
 	path_put(&path);
 out_copy_to_user:
