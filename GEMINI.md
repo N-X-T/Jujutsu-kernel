@@ -3,6 +3,8 @@
 ## Target Platform & Build Invariants
 - **Device**: Xiaomi Redmi 9A / 9C / 9A NFC (`blossom` / `dandelion` / `angelica` / `cattail`, MediaTek MT6762 / MT6765).
 - **Architecture**: `arm64` (`ARCH=arm64`, `SUBARCH=arm64`).
+- **Userspace / ROM**: Pure 64-bit (`arm64`) custom ROMs (AOSP/LineageOS-based).
+- **MIUI Compatibility**: Strictly **INCOMPATIBLE** with MIUI. Do not add workarounds, shims, or spend effort accommodating MIUI proprietary blobs/services.
 - **Kernel Version**: Linux 4.19.275.
 - **Defconfig**: `arch/arm64/configs/blossom_defconfig`.
 - **Known Broken Configs**:
