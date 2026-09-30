@@ -25,13 +25,10 @@
 #include <linux/susfs_def.h>
 extern int susfs_get_data_path(struct path *path);
 extern bool susfs_is_inode_sus_path(struct inode *inode);
+extern bool susfs_is_ino_sus_path(dev_t dev, unsigned long ino);
 #endif
 
 #include <linux/uaccess.h>
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-#include <linux/susfs_def.h>
-extern bool susfs_is_inode_sus_path(struct inode *inode);
-#endif
 
 int iterate_dir(struct file *file, struct dir_context *ctx)
 {
@@ -159,6 +156,8 @@ static int fillonedir(struct dir_context *ctx, const char *name, int namlen,
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	inode = ilookup(buf->sb, ino);
 	if (!inode) {
+		if (susfs_is_ino_sus_path(buf->sb->s_dev, ino))
+			return 0;
 		goto orig_flow;
 	}
 	if (susfs_is_inode_sus_path(inode)) {
@@ -247,7 +246,9 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
     struct inode *inode;
     inode = ilookup(buf->sb, ino);
     if (!inode) {
-            goto orig_flow;
+        if (susfs_is_ino_sus_path(buf->sb->s_dev, ino))
+            return 0;
+        goto orig_flow;
     }
     if (susfs_is_inode_sus_path(inode)) {
             iput(inode);
@@ -354,7 +355,9 @@ static int filldir64(struct dir_context *ctx, const char *name, int namlen,
     struct inode *inode;
     inode = ilookup(buf->sb, ino);
     if (!inode) {
-            goto orig_flow;
+        if (susfs_is_ino_sus_path(buf->sb->s_dev, ino))
+            return 0;
+        goto orig_flow;
     }
     if (susfs_is_inode_sus_path(inode)) {
             iput(inode);
@@ -474,7 +477,9 @@ static int compat_fillonedir(struct dir_context *ctx, const char *name,
     struct inode *inode;
     inode = ilookup(buf->sb, ino);
     if (!inode) {
-            goto orig_flow;
+        if (susfs_is_ino_sus_path(buf->sb->s_dev, ino))
+            return 0;
+        goto orig_flow;
     }
     if (susfs_is_inode_sus_path(inode)) {
             iput(inode);
@@ -567,7 +572,9 @@ static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
     struct inode *inode;
     inode = ilookup(buf->sb, ino);
     if (!inode) {
-            goto orig_flow;
+        if (susfs_is_ino_sus_path(buf->sb->s_dev, ino))
+            return 0;
+        goto orig_flow;
     }
     if (susfs_is_inode_sus_path(inode)) {
             iput(inode);

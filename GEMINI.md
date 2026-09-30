@@ -62,15 +62,27 @@ When maintaining or backporting SUSFS v2.3.0 features to this 4.19 kernel:
 - **Typo Invariant**:
   - Ensure `#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)` uses `<<` and `is_statically` is typed as `bool` in `include/linux/susfs.h`.
 
-### 6. Low-RAM Inode Eviction & Self-Healing Invariants
-On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refcount == 0` are frequently evicted from dcache/icache by `shrink_icache_sb` during app cold launches and memory pressure:
-- **Fast-path Self-Healing**: `inode->i_mapping->flags` bits (`AS_FLAGS_OPEN_REDIRECT`, `AS_FLAGS_SUS_PATH`) are purely in-memory flags that are wiped when an inode is evicted and reloaded from storage.
-- **`susfs_is_inode_open_redirect_fast`**:
-  - Check `test_bit(AS_FLAGS_OPEN_REDIRECT)` first (1 CPU instruction fast-path).
-  - If unset and `OPEN_REDIRECT_HLIST` is non-empty, look up by permanent disk identifiers `(inode->i_ino, inode->i_sb->s_dev)` under `srcu_read_lock`.
-  - On match, re-flag the inode (`set_bit(AS_FLAGS_OPEN_REDIRECT)`) on-the-fly so subsequent accesses remain fast-path.
-- **`susfs_run_open_redirect_loop`**:
-  - Registered in `susfs_run_extra_works()` alongside `susfs_run_sus_path_loop()` to re-flag all redirected paths whenever Zygote spawns an app process.
+### 6. Low-RAM Inode Eviction & Universal Self-Healing Invariants
+On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refcount == 0` are frequently evicted from dcache/icache by `shrink_icache_sb` during app cold launches, Termux commands, and background memory pressure:
+- **Fast-path Self-Healing Architecture**:
+  - `inode->i_mapping->flags` bits (`AS_FLAGS_SUS_PATH`, `AS_FLAGS_OPEN_REDIRECT`, `AS_FLAGS_SUS_KSTAT`, `AS_FLAGS_SUS_MAP`) are purely in-memory flags that are wiped when an inode is evicted and reloaded from storage.
+  - When an app or command accesses an evicted path, Linux loads a fresh `struct inode` from disk with `flags == 0`.
+  - To prevent detection failure, every feature implements a 3-tier check:
+    1. **Tier 1 (1 CPU instruction)**: `test_bit(AS_FLAGS_*, &inode->i_mapping->flags)` — zero overhead for cached inodes.
+    2. **Tier 2 (Zero-overhead check)**: `if (likely(hash_empty(FEATURE_HLIST))) return false;` — instantaneous bailout if no paths configured.
+    3. **Tier 3 (Self-Healing via RCU Hash Table)**: Lookup by permanent disk identifiers `(inode->i_ino, inode->i_sb->s_dev)` under `rcu_read_lock()`. On match, re-arm the flag (`set_bit(AS_FLAGS_*, &inode->i_mapping->flags)`) on-the-fly so subsequent accesses return to Tier 1 fast-path!
+- **Component Implementations**:
+  - **`sus_path`**:
+    - Backed by `SUS_PATH_HLIST`. Enrolled dynamically in `susfs_add_sus_path()`, `susfs_add_sus_path_loop()`, and `susfs_run_sus_path_loop()`.
+    - `susfs_is_inode_sus_path(inode)`: Self-heals both standard and FUSE inodes upon access in `fs/namei.c`.
+    - `susfs_is_ino_sus_path(dev, ino)`: Fallback check in `fs/readdir.c` callbacks when `ilookup(buf->sb, ino)` returns `NULL` (inode not in icache during directory listing).
+  - **`open_redirect`**:
+    - `susfs_is_inode_open_redirect_fast(inode)`: Backed by `OPEN_REDIRECT_HLIST` under SRCU.
+    - `susfs_run_open_redirect_loop()`: Enrolled in `susfs_run_extra_works()`.
+  - **`sus_kstat`**:
+    - `susfs_is_inode_sus_kstat(inode, out_is_fuse)`: Backed by `SUS_KSTAT_HLIST`. Self-heals inode flag, protecting `generic_fillattr()`, `vfs_statfs()`, and `show_map_vma()`.
+  - **`sus_map`**:
+    - `susfs_is_inode_sus_map_fast(inode)`: Backed by `SUS_MAP_HLIST`. Self-heals `AS_FLAGS_SUS_MAP` protecting `/proc/<pid>/maps` and `/proc/<pid>/smaps` filtering.
 - **Unified `sus_path` Persistence**:
   - `susfs_add_sus_path()` automatically enrolls added paths into `LH_SUS_PATH_LOOP` (if not already present), guaranteeing persistence across cold app launches regardless of whether `add_sus_path` or `add_sus_path_loop` was called by userspace.
 

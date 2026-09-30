@@ -165,10 +165,15 @@ static inline bool susfs_is_current_proc_umounted_app(void) {
 #endif
 }
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+struct inode;
+extern bool susfs_is_inode_sus_map_fast(struct inode *inode);
 #define SUSFS_IS_INODE_SUS_MAP(inode) \
-		inode && inode->i_mapping && \
-		unlikely(test_bit(AS_FLAGS_SUS_MAP, &inode->i_mapping->flags)) && \
-		susfs_is_current_proc_umounted_app()
+		(susfs_is_inode_sus_map_fast(inode) && \
+		susfs_is_current_proc_umounted_app())
+#else
+#define SUSFS_IS_INODE_SUS_MAP(inode) (false)
+#endif
 
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 struct inode;

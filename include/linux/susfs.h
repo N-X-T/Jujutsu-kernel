@@ -190,6 +190,13 @@ struct st_susfs_version {
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 void susfs_add_sus_path(void __user **user_info);
 void susfs_add_sus_path_loop(void __user **user_info);
+void susfs_run_sus_path_loop(void);
+bool susfs_is_ino_sus_path(dev_t dev, unsigned long ino);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+bool susfs_is_inode_sus_path(struct mnt_idmap* idmap, struct inode *inode);
+#else
+bool susfs_is_inode_sus_path(struct inode *inode);
+#endif
 #endif
 
 /* sus_mount */
@@ -202,6 +209,8 @@ void susfs_set_hide_sus_mnts_for_non_su_procs(void __user **user_info);
 void susfs_add_sus_kstat(void __user **user_info);
 void susfs_update_sus_kstat(void __user **user_info);
 int susfs_sus_kstat_spoof_vfs_statfs(struct inode *inode, struct kstatfs *buf, bool *is_fuse);
+bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
+void susfs_sus_kstat_spoof_generic_fillattr(struct inode *inode, struct kstat *stat);
 #endif
 
 /* spoof_uname */
@@ -232,6 +241,7 @@ void susfs_run_open_redirect_loop(void);
 /* sus_map */
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 void susfs_add_sus_map(void __user **user_info);
+bool susfs_is_inode_sus_map_fast(struct inode *inode);
 #endif
 
 void susfs_set_avc_log_spoofing(void __user **user_info);
