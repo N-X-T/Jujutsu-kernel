@@ -57,6 +57,33 @@ jobs:
           chmod +x clean.sh
           ./clean.sh || true
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+
+          echo "Patching ReSukiSU faccessat/stat hook signatures for non-GKI 4.19 kernel..."
+          python3 -c '
+          def patch_file(path, old, new):
+              with open(path, "r") as f:
+                  c = f.read()
+              if old not in c:
+                  raise ValueError(f"Pattern {old!r} not found in {path}")
+              c = c.replace(old, new, 1)
+              with open(path, "w") as f:
+                  f.write(c)
+              print(f"Successfully patched {path}")
+
+          patch_file("KernelSU/kernel/feature/sucompat.h",
+              "#ifdef CONFIG_KSU_SUSFS\nint ksu_handle_faccessat",
+              "#if defined(CONFIG_KSU_SUSFS) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\nint ksu_handle_faccessat")
+
+          patch_file("KernelSU/kernel/feature/sucompat.c",
+              "#ifdef CONFIG_KSU_SUSFS\nint ksu_handle_faccessat(int *dfd, struct filename **filename",
+              "#if defined(CONFIG_KSU_SUSFS) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\nint ksu_handle_faccessat(int *dfd, struct filename **filename")
+
+          patch_file("KernelSU/kernel/feature/sucompat.c",
+              "#ifdef CONFIG_KSU_SUSFS\nint ksu_handle_stat(int *dfd, struct filename **filename",
+              "#if defined(CONFIG_KSU_SUSFS) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\nint ksu_handle_stat(int *dfd, struct filename **filename")
+          '
+          git -C KernelSU diff
+
           
       - name: Build kernel
         run: |
