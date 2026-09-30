@@ -43,3 +43,20 @@ ReSukiSU relies on `susfs_def.h` for process privilege checking and unmounting. 
 - Check for duplicate `orig_flow:` labels in `fs/readdir.c`.
 - In `fs/stat.c`, use `susfs_sus_kstat_spoof_generic_fillattr(inode, stat)` (defined in `fs/susfs.c`). Do NOT use `susfs_sus_ino_for_generic_fillattr` as it is non-existent.
 - Do NOT duplicate extern declarations or hook blocks in `fs/proc/base.c` and `fs/proc/task_mmu.c`.
+
+### 5. SUSFS v2.3.0 Non-GKI (4.19) Adaptation Invariants
+When maintaining or backporting SUSFS v2.3.0 features to this 4.19 kernel:
+- **`generic_fillattr` Hook Signature**:
+  - GKI 6.1 upstream passes 3 arguments (`inode, stat, result_mask`). On Non-GKI 4.19, `generic_fillattr` only has 2 arguments (`inode, stat`).
+  - `susfs_sus_kstat_spoof_generic_fillattr` in `fs/susfs.c` and `fs/stat.c` MUST remain 2 arguments: `(struct inode *inode, struct kstat *stat)`.
+  - Gate `stat->mnt_id` with `#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)` as `mnt_id` does not exist in 4.19 `struct kstat`.
+- **`fs/statfs.c` Exported Wrappers**:
+  - `fs/susfs.c` requires `statfs_by_dentry_wrapper` and `calculate_f_flags_wrapper`.
+  - Export these wrappers as non-static functions in `fs/statfs.c` guarded by `#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT`.
+- **`vfs_statfs` Spoofing Guards**:
+  - In `fs/statfs.c:vfs_statfs`, guard `susfs_statfs_by_dentry` with `susfs_is_current_app_uid()` and `susfs_is_inode_sus_kstat()`.
+- **Memory Leak Protection**:
+  - In `susfs_update_sus_kstat()`, always call `kfree(new_entry)` if no existing matching entry is found before returning `-ENOENT`.
+- **Typo Invariant**:
+  - Ensure `#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)` uses `<<` and `is_statically` is typed as `bool` in `include/linux/susfs.h`.
+
