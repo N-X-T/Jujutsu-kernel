@@ -34,6 +34,9 @@
 #if defined(CONFIG_KSU_SUSFS_SUS_PATH) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 #include <linux/susfs_def.h>
 #endif
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+extern bool susfs_is_inode_sus_path(struct inode *inode);
+#endif
 
 #include "internal.h"
 
@@ -1134,6 +1137,15 @@ retry:
 			}
 		}
 #endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (f && !IS_ERR(f)) {
+			struct inode *inode = file_inode(f);
+			if (susfs_is_inode_sus_path(inode)) {
+				filp_close(f, NULL);
+				f = ERR_PTR(-ENOENT);
+			}
+		}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		if (IS_ERR(f)) {
 			put_unused_fd(fd);
 			fd = PTR_ERR(f);

@@ -83,5 +83,8 @@ On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refco
     - `susfs_is_inode_sus_kstat(inode, out_is_fuse)`: Backed by `SUS_KSTAT_HLIST`. Self-heals inode flag, protecting `generic_fillattr()`, `vfs_statfs()`, and `show_map_vma()`.
   - **`sus_map`**:
     - `susfs_is_inode_sus_map_fast(inode)`: Backed by `SUS_MAP_HLIST`. Self-heals `AS_FLAGS_SUS_MAP` protecting `/proc/<pid>/maps` and `/proc/<pid>/smaps` filtering.
+- **Cold Path & Eviction Interception (`fs/namei.c` & `fs/open.c`)**:
+  - Upstream SUSFS only intercepted cached dentries in `lookup_fast` / `d_lookup`. When an inode was evicted or on cold start, `d_lookup` returned `NULL`, causing Linux to take the `atomic_open` (ext4/f2fs) / `lookup_open` / `may_open` paths which lacked hooks, allowing the first read to succeed before the inode was cached!
+  - To ensure cold reads never leak, `susfs_is_inode_sus_path()` is hooked across the entire VFS open & lookup pipeline: `may_open()`, `atomic_open()`, `lookup_open()`, `filename_lookup()`, `do_o_path()`, and `fs/open.c:do_sys_openat()`.
 
 

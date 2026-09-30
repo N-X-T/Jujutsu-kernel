@@ -2556,8 +2556,17 @@ static int filename_lookup(int dfd, struct filename *name, unsigned flags,
 	if (unlikely(retval == -ESTALE))
 		retval = path_lookupat(&nd, flags | LOOKUP_REVAL, path);
 
-	if (likely(!retval))
-		audit_inode(name, path->dentry, flags & LOOKUP_PARENT);
+	if (likely(!retval)) {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (!(flags & LOOKUP_PARENT) && path->dentry && path->dentry->d_inode &&
+		    susfs_is_inode_sus_path(path->dentry->d_inode)) {
+			path_put(path);
+			retval = -ENOENT;
+		}
+#endif
+		if (likely(!retval))
+			audit_inode(name, path->dentry, flags & LOOKUP_PARENT);
+	}
 	restore_nameidata();
 	putname(name);
 	return retval;
@@ -3180,6 +3189,11 @@ static int may_open(const struct path *path, int acc_mode, int flag)
 	if (!inode)
 		return -ENOENT;
 
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	if (susfs_is_inode_sus_path(inode))
+		return -ENOENT;
+#endif
+
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFLNK:
 		return -ELOOP;
@@ -3301,6 +3315,21 @@ static int atomic_open(struct nameidata *nd, struct dentry *dentry,
 				       open_to_namei_flags(open_flag), mode);
 	d_lookup_done(dentry);
 	if (!error) {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		struct inode *target_inode = NULL;
+		if (file->f_mode & FMODE_OPENED)
+			target_inode = file_inode(file);
+		else if (dentry->d_inode)
+			target_inode = dentry->d_inode;
+
+		if (target_inode && susfs_is_inode_sus_path(target_inode)) {
+			if (file->f_mode & FMODE_OPENED) {
+				fput(file);
+			}
+			dput(dentry);
+			return -ENOENT;
+		}
+#endif
 		if (file->f_mode & FMODE_OPENED) {
 			/*
 			 * We didn't have the inode before the open, so check open
@@ -3474,6 +3503,13 @@ no_open:
 			dentry = res;
 		}
 	}
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	if (dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		error = -ENOENT;
+		goto out_dput;
+	}
+#endif
 
 	/* Negative dentry, just create the file */
 	if (!dentry->d_inode && (open_flag & O_CREAT)) {
@@ -3768,6 +3804,12 @@ static int do_o_path(struct nameidata *nd, unsigned flags, struct file *file)
 	struct path path;
 	int error = path_lookupat(nd, flags, &path);
 	if (!error) {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (path.dentry && path.dentry->d_inode && susfs_is_inode_sus_path(path.dentry->d_inode)) {
+			path_put(&path);
+			return -ENOENT;
+		}
+#endif
 		audit_inode(nd->name, path.dentry, 0);
 		error = vfs_open(&path, file);
 		path_put(&path);
