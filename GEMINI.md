@@ -7,6 +7,7 @@
 - **MIUI Compatibility**: Strictly **INCOMPATIBLE** with MIUI. Do not add workarounds, shims, or spend effort accommodating MIUI proprietary blobs/services.
 - **Kernel Version**: Linux 4.19.275.
 - **Defconfig**: `arch/arm64/configs/blossom_defconfig`.
+- **Active Branch**: `V7` (SUSFS v2.3.0 with Universal Self-Healing). `V7-backup` is the pre-v2.3.0 archive.
 - **Known Broken Configs**:
   - `CONFIG_USERFAULTFD`: Must be disabled (`# CONFIG_USERFAULTFD is not set` / `CONFIG_USERFAULTFD=n`). Backported userfaultfd structures (`sysctl_unprivileged_userfaultfd`, `VM_UFFD_MINOR`) are incomplete in this tree and break `kernel/sysctl.c` and `fs/proc/task_mmu.c`.
 
@@ -86,5 +87,12 @@ On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refco
 - **Cold Path & Eviction Interception (`fs/namei.c` & `fs/open.c`)**:
   - Upstream SUSFS only intercepted cached dentries in `lookup_fast` / `d_lookup`. When an inode was evicted or on cold start, `d_lookup` returned `NULL`, causing Linux to take the `atomic_open` (ext4/f2fs) / `lookup_open` / `may_open` paths which lacked hooks, allowing the first read to succeed before the inode was cached!
   - To ensure cold reads never leak, `susfs_is_inode_sus_path()` is hooked across the entire VFS open & lookup pipeline: `may_open()`, `atomic_open()`, `lookup_open()`, `filename_lookup()`, `do_o_path()`, and `fs/open.c:do_sys_openat()`.
+  - **Pipeline Cleanup Invariants**:
+    - In `atomic_open()`: When `susfs_is_inode_sus_path()` matches, call `fput(file)` (if `file->f_mode & FMODE_OPENED`), `dput(dentry)`, and return `-ENOENT`.
+    - In `lookup_open()`: In the `no_open` path after `dir_inode->i_op->lookup()`, check `susfs_is_inode_sus_path(dentry->d_inode)` and jump to `out_dput` returning `-ENOENT`.
+    - In `fs/open.c:do_sys_openat()`: After `do_filp_open()` returns, check `susfs_is_inode_sus_path(file_inode(f))`. If matched, call `filp_close(f, NULL)` and replace `f = ERR_PTR(-ENOENT)` so `put_unused_fd(fd)` is invoked cleanly.
+    - In `filename_lookup()`: Guard resolved paths when `!(flags & LOOKUP_PARENT)` with `path_put(path)` and return `-ENOENT`.
+- **Loop List Decoupling**:
+  - `susfs_add_sus_path()` must NOT auto-enroll into `LH_SUS_PATH_LOOP`. Low-RAM eviction persistence is completely solved by `SUS_PATH_HLIST` self-healing, while `LH_SUS_PATH_LOOP` remains reserved for explicit userspace `add_sus_path_loop` calls.
 
 
