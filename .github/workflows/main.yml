@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - V7
+      - susfs-2.3.0
   workflow_dispatch:
 
 env:
