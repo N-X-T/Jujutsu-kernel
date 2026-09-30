@@ -62,3 +62,16 @@ When maintaining or backporting SUSFS v2.3.0 features to this 4.19 kernel:
 - **Typo Invariant**:
   - Ensure `#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)` uses `<<` and `is_statically` is typed as `bool` in `include/linux/susfs.h`.
 
+### 6. Low-RAM Inode Eviction & Self-Healing Invariants
+On low-RAM devices (e.g. 2GB MT6762 / Redmi 9A), unreferenced inodes with `refcount == 0` are frequently evicted from dcache/icache by `shrink_icache_sb` during app cold launches and memory pressure:
+- **Fast-path Self-Healing**: `inode->i_mapping->flags` bits (`AS_FLAGS_OPEN_REDIRECT`, `AS_FLAGS_SUS_PATH`) are purely in-memory flags that are wiped when an inode is evicted and reloaded from storage.
+- **`susfs_is_inode_open_redirect_fast`**:
+  - Check `test_bit(AS_FLAGS_OPEN_REDIRECT)` first (1 CPU instruction fast-path).
+  - If unset and `OPEN_REDIRECT_HLIST` is non-empty, look up by permanent disk identifiers `(inode->i_ino, inode->i_sb->s_dev)` under `srcu_read_lock`.
+  - On match, re-flag the inode (`set_bit(AS_FLAGS_OPEN_REDIRECT)`) on-the-fly so subsequent accesses remain fast-path.
+- **`susfs_run_open_redirect_loop`**:
+  - Registered in `susfs_run_extra_works()` alongside `susfs_run_sus_path_loop()` to re-flag all redirected paths whenever Zygote spawns an app process.
+- **Unified `sus_path` Persistence**:
+  - `susfs_add_sus_path()` automatically enrolls added paths into `LH_SUS_PATH_LOOP` (if not already present), guaranteeing persistence across cold app launches regardless of whether `add_sus_path` or `add_sus_path_loop` was called by userspace.
+
+

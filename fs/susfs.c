@@ -93,13 +93,40 @@ void susfs_add_sus_path(void __user **user_info) {
 		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx\n",
 					info.target_pathname, fi->nodeid, fi->inode.i_ino, fi->inode.i_mapping->flags);
 		info.err = 0;
-		goto out_path_put_path;
+	} else {
+		set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
+		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', ino: '%lu', inode->i_mapping->flags: 0x%lx\n",
+					info.target_pathname, inode->i_ino, inode->i_mapping->flags);
+		info.err = 0;
 	}
 
-	set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
-	SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', ino: '%lu', inode->i_mapping->flags: 0x%lx\n",
-				info.target_pathname, inode->i_ino, inode->i_mapping->flags);
-	info.err = 0;
+	if (!info.err) {
+		struct st_susfs_sus_path_list *cursor = NULL;
+		struct st_susfs_sus_path_list *new_list = NULL;
+		bool found = false;
+
+		spin_lock(&susfs_spin_lock_sus_path);
+		list_for_each_entry(cursor, &LH_SUS_PATH_LOOP, list) {
+			if (!strcmp(cursor->target_pathname, info.target_pathname)) {
+				found = true;
+				break;
+			}
+		}
+		spin_unlock(&susfs_spin_lock_sus_path);
+
+		if (!found) {
+			new_list = kzalloc(sizeof(struct st_susfs_sus_path_list), GFP_KERNEL);
+			if (new_list) {
+				strncpy(new_list->info.target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+				strncpy(new_list->target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+				INIT_LIST_HEAD(&new_list->list);
+				spin_lock(&susfs_spin_lock_sus_path);
+				list_add_tail_rcu(&new_list->list, &LH_SUS_PATH_LOOP);
+				spin_unlock(&susfs_spin_lock_sus_path);
+				SUSFS_LOGI("target_pathname: '%s', is auto-added to LH_SUS_PATH_LOOP\n", new_list->target_pathname);
+			}
+		}
+	}
 out_path_put_path:
 	path_put(&path);
 out_copy_to_user:
@@ -971,6 +998,64 @@ out_copy_to_user:
 	SUSFS_LOGI("CMD_SUSFS_ADD_OPEN_REDIRECT -> ret: %d\n", info.err);
 }
 
+bool susfs_is_inode_open_redirect_fast(struct inode *inode) {
+	struct st_susfs_open_redirect_hlist *entry;
+	int srcu_idx;
+
+	if (unlikely(!inode || !inode->i_mapping))
+		return false;
+
+	if (likely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags)))
+		return true;
+
+	if (likely(hash_empty(OPEN_REDIRECT_HLIST)))
+		return false;
+
+	srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
+	hash_for_each_possible_rcu(OPEN_REDIRECT_HLIST, entry, node, inode->i_ino) {
+		if (entry->target_ino == inode->i_ino &&
+		    entry->target_dev == inode->i_sb->s_dev) {
+			set_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags);
+			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+			return true;
+		}
+	}
+	srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+	return false;
+}
+
+void susfs_run_open_redirect_loop(void) {
+	struct st_susfs_open_redirect_hlist *entry = NULL;
+	struct path path;
+	struct inode *inode;
+	int bkt;
+	int srcu_idx;
+
+	if (hash_empty(OPEN_REDIRECT_HLIST))
+		return;
+
+	srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
+	hash_for_each_rcu(OPEN_REDIRECT_HLIST, bkt, entry, node) {
+		if (!entry->reversed_lookup_only) {
+			if (!kern_path(entry->info.target_pathname, 0, &path)) {
+				inode = d_backing_inode(path.dentry);
+				if (inode && inode->i_mapping) {
+					set_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags);
+				}
+				path_put(&path);
+			}
+			if (!kern_path(entry->info.redirected_pathname, 0, &path)) {
+				inode = d_backing_inode(path.dentry);
+				if (inode && inode->i_mapping) {
+					set_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags);
+				}
+				path_put(&path);
+			}
+		}
+	}
+	srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+}
+
 struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode) {
 	struct st_susfs_open_redirect_hlist *entry = NULL;
 	struct filename *new_filename = NULL;
@@ -1527,6 +1612,9 @@ static void susfs_run_extra_works(struct work_struct *work) {
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	susfs_run_sus_path_loop();
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	susfs_run_open_redirect_loop();
 #endif
 }   
 

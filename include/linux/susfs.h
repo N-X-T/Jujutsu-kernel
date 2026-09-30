@@ -223,7 +223,10 @@ int susfs_spoof_cmdline_or_bootconfig(struct seq_file *m);
 
 /* open_redirect */
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+struct inode;
 void susfs_add_open_redirect(void __user **user_info);
+bool susfs_is_inode_open_redirect_fast(struct inode *inode);
+void susfs_run_open_redirect_loop(void);
 #endif
 
 /* sus_map */
