@@ -11,16 +11,16 @@
 - **Known Broken Configs**:
   - `CONFIG_USERFAULTFD`: Must be disabled (`# CONFIG_USERFAULTFD is not set` / `CONFIG_USERFAULTFD=n`). Backported userfaultfd structures (`sysctl_unprivileged_userfaultfd`, `VM_UFFD_MINOR`) are incomplete in this tree and break `kernel/sysctl.c` and `fs/proc/task_mmu.c`.
 
-## ReSukiSU + SUSFS Integration Rules
-When developing, patching, or updating ReSukiSU and SUSFS in this kernel tree:
+## BakaSU (formerly ReSukiSU) + SUSFS Integration Rules
+When developing, patching, or updating BakaSU and SUSFS in this kernel tree:
 
 ### 1. Non-GKI (4.19) Hook Signature Invariant
 - **Issue**: On GKI (5.10+), `do_faccessat` and `vfs_statx` pass `struct filename *`. On Non-GKI 4.19, `fs/open.c` and `fs/stat.c` pass `const char __user *filename`.
-- **Rule**: ReSukiSU `kernel/feature/sucompat.h` and `sucompat.c` MUST NOT use `struct filename **filename` on kernel 4.19. Always gate `struct filename **` with `LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)` so 4.19 uses `const char __user **filename_user`.
+- **Rule**: BakaSU `kernel/feature/sucompat.h` and `sucompat.c` MUST NOT use `struct filename **filename` on kernel 4.19. Always gate `struct filename **` with `LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)` so 4.19 uses `const char __user **filename_user`.
 - **Early Boot Protection**: Always guard calls to `ksu_handle_faccessat` and `ksu_handle_stat` with `if (likely(current->mm))` in `fs/open.c` and `fs/stat.c` so kernel threads (e.g., `swapper/0` checking `/init`) never invoke userspace sucompat hooks.
 
 ### 2. `include/linux/susfs_def.h` Protocol Requirements
-ReSukiSU relies on `susfs_def.h` for process privilege checking and unmounting. Ensure all corresponding thread flags and inline helpers exist:
+BakaSU relies on `susfs_def.h` for process privilege checking and unmounting. Ensure all corresponding thread flags and inline helpers exist:
 - Thread Info Flags:
   - `TIF_PROC_UMOUNTED (33)`
   - `TIF_PROC_NO_SU (34)`

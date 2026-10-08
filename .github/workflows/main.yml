@@ -1,4 +1,4 @@
-name: Build Jujutsu Kernel with ReSukiSU and SUSFS
+name: Build Jujutsu Kernel with BakaSU and SUSFS
 
 on:
   push:
@@ -53,13 +53,13 @@ jobs:
           /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
           /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
 
-      - name: Integrate ReSukiSU
+      - name: Integrate BakaSU
         run: |
           chmod +x clean.sh
           ./clean.sh || true
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s main
 
-          echo "Patching ReSukiSU faccessat/stat hook signatures for non-GKI 4.19 kernel..."
+          echo "Patching BakaSU faccessat/stat hook signatures for non-GKI 4.19 kernel..."
           python3 -c '
           def patch_file(path, old, new):
               with open(path, "r") as f:
@@ -98,7 +98,7 @@ jobs:
 
           make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
 
-          echo "Building Jujutsu Kernel with ReSukiSU and SUSFS..."
+          echo "Building Jujutsu Kernel with BakaSU and SUSFS..."
           make -j$(nproc) \
             O=out \
             ARCH=${ARCH} \
@@ -161,7 +161,7 @@ jobs:
       - name: Upload AnyKernel package
         uses: actions/upload-artifact@v7
         with:
-          name: Jujutsu-Kernel-ReSukiSU-SUSFS
+          name: Jujutsu-Kernel-BakaSU-SUSFS
           path: Jujutsu-Kernel-${{ github.sha }}.zip
           archive: false
           retention-days: 30
